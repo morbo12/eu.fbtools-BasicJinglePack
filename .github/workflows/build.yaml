@@ -1,0 +1,88 @@
+name: "Build and Release"
+
+permissions:
+  contents: write
+  packages: read
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-job:
+    timeout-minutes: 60
+    name: Build Release Packages
+    runs-on: linux-latest
+    outputs:
+      VERSION: ${{ steps.extract_info.outputs.VERSION }}
+      NAME: ${{ steps.extract_info.outputs.NAME }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version and name from tag
+        id: extract_info
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Make sure tags are available
+          git fetch --tags --quiet
+
+          # If this run was triggered by a tag push, use that tag. Otherwise try to find the latest tag.
+          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo "dev-$(date -u +%Y%m%d%H%M%S)")"
+          fi
+
+          NAME="${GITHUB_REPOSITORY##*/}"
+
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "NAME=${NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          zip -r "release/eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip" GenericJingles GoalHorn GoalJingles PenaltyJingles SpecialJingles
+
+
+      - name: Determine Release Type
+        id: release_type
+        run: |
+          if ('${{ github.ref }}' -eq 'refs/heads/main') {
+            echo "IS_PRERELEASE=false" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "IS_PRERELEASE=true" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: "Archive artifacts"
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-BasicJinglePack-${{ steps.extract_info.outputs.VERSION }}
+          path: "release"
+          
+      - name: Get Changelog  Entry
+        id: changelog_reader
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          version: ${{ steps.extract_info.outputs.VERSION }}
+          path: ./CHANGELOG.md
+
+      - name: Publish archives and packages
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ steps.changelog_reader.outputs.version }}
+          tag_name: "v${{ steps.changelog_reader.outputs.version }}"
+          body: ${{ steps.changelog_reader.outputs.changes }}
+          prerelease: ${{ steps.changelog_reader.outputs.status == 'prereleased' }}
+          draft: ${{ steps.changelog_reader.outputs.status == 'unreleased' }}
+          files: release*/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
