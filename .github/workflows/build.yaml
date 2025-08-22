@@ -52,7 +52,7 @@ jobs:
       - name: Create release archive
         shell: pwsh
         run: |
-          choco install innosetup
+          choco install innosetup -y
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Compress-Archive -Path 'GenericJingles','GoalHorn','GoalJingles','PenaltyJingles','SpecialJingles' -DestinationPath "release\eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip" -Force
@@ -60,7 +60,7 @@ jobs:
           # Decode secret and write key file (binary-safe)
           $bytes = [System.Convert]::FromBase64String($env:ISSIGTOOL_KEY)
           [IO.File]::WriteAllBytes('MyKey.isprivatekey', $bytes)
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISSigTool.exe" --key-file="MyKey.isprivatekey" sign "release/eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip"
+          ISSigTool.exe --key-file="MyKey.isprivatekey" sign "release/eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip"
           Remove-Item -Path "MyKey.isprivatekey" -Force
           
         env:
