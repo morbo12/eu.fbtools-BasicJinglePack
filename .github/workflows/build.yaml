@@ -62,7 +62,7 @@ jobs:
           [IO.File]::WriteAllBytes('MyKey.isprivatekey', $bytes)
 
           try {
-            ${env:ProgramFiles(x86)}\Inno Setup 6\ISSigTool.exe -key-file="MyKey.isprivatekey" sign "release/eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip"
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISSigTool.exe" -key-file="MyKey.isprivatekey" sign "release/eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip"
           } finally {
             Remove-Item -Path "MyKey.isprivatekey" -Force
           }
