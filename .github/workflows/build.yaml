@@ -11,7 +11,7 @@ jobs:
   build-job:
     timeout-minutes: 60
     name: Build Release Packages
-    runs-on: linux-latest
+    runs-on: windows-latest
     outputs:
       VERSION: ${{ steps.extract_info.outputs.VERSION }}
       NAME: ${{ steps.extract_info.outputs.NAME }}
@@ -24,31 +24,50 @@ jobs:
 
       - name: Extract version and name from tag
         id: extract_info
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
+          $ErrorActionPreference = 'Stop'
           # Make sure tags are available
           git fetch --tags --quiet
 
           # If this run was triggered by a tag push, use that tag. Otherwise try to find the latest tag.
-          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo "dev-$(date -u +%Y%m%d%H%M%S)")"
-          fi
+          if ($env:GITHUB_REF -and $env:GITHUB_REF.StartsWith('refs/tags/')) {
+            $VERSION = $env:GITHUB_REF.Substring(10)
+          }
+          else {
+            $tag = git describe --tags --abbrev=0 2>$null
+            if ($LASTEXITCODE -eq 0 -and $tag) {
+              $VERSION = $tag.Trim()
+            }
+            else {
+              $VERSION = 'dev-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss')
+            }
+          }
 
-          NAME="${GITHUB_REPOSITORY##*/}"
+          $NAME = ($env:GITHUB_REPOSITORY -split '/')[ -1 ]
 
-          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "NAME=${NAME}" >> "$GITHUB_OUTPUT"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$VERSION"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "NAME=$NAME"
 
       - name: Create release archive
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          mkdir -p release
-          zip -r "release/eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip" GenericJingles GoalHorn GoalJingles PenaltyJingles SpecialJingles
+          choco install innosetup
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Compress-Archive -Path 'GenericJingles','GoalHorn','GoalJingles','PenaltyJingles','SpecialJingles' -DestinationPath "release\eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip" -Force
+          
+          # Decode secret and write key file (binary-safe)
+          $bytes = [System.Convert]::FromBase64String($env:ISSIGTOOL_KEY)
+          [IO.File]::WriteAllBytes('MyKey.isprivatekey', $bytes)
 
+          try {
+            ${env:ProgramFiles(x86)}\Inno Setup 6\ISSigTool.exe -key-file="MyKey.isprivatekey" sign "release/eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip"
+          } finally {
+            Remove-Item -Path "MyKey.isprivatekey" -Force
+          }
+        env:
+          ISSIGTOOL_KEY: ${{ secrets.ISSIGTOOL_KEY }}
 
       - name: Determine Release Type
         id: release_type
@@ -83,3 +102,5 @@ jobs:
           files: release*/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
