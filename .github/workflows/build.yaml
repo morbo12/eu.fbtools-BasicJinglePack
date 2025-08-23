@@ -52,10 +52,10 @@ jobs:
       - name: Create release archive
         shell: pwsh
         run: |
-          choco install innosetup -y
-          
-          (Get-Content C:\ProgramData\chocolatey\logs\chocolatey.log) -match 'Software installed to'
-
+          # choco install innosetup -y
+          Write-Host "`n=== Search common folders for ISSigTool.exe (may take a few seconds) ==="
+          Get-ChildItem 'C:\Program Files*','C:\ProgramData\chocolatey' -Recurse -Filter 'ISSigTool.exe' -ErrorAction SilentlyContinue | Select-Object -First 10 -Property FullName | ForEach-Object { Write-Host $_.FullName }
+         
           # $ErrorActionPreference = 'Stop'
           # New-Item -ItemType Directory -Force -Path release | Out-Null
           # Compress-Archive -Path 'GenericJingles','GoalHorn','GoalJingles','PenaltyJingles','SpecialJingles' -DestinationPath "release\eu.fbtools-BasicJinglePack_${{ steps.extract_info.outputs.VERSION }}.zip" -Force
