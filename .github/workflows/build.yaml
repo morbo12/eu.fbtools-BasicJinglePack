@@ -22,26 +22,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version and name from tag
+      - name: Extract version and name from version.txt (required)
         id: extract_info
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Make sure tags are available
-          git fetch --tags --quiet
 
-          # If this run was triggered by a tag push, use that tag. Otherwise try to find the latest tag.
-          if ($env:GITHUB_REF -and $env:GITHUB_REF.StartsWith('refs/tags/')) {
-            $VERSION = $env:GITHUB_REF.Substring(10)
+          # Require explicit version from version.txt (repo root). Do not fall back to tags.
+          if (-not (Test-Path -Path version.txt)) {
+            Write-Error "version.txt not found in repository root. Please add version.txt with the release version."
+            exit 1
           }
-          else {
-            $tag = git describe --tags --abbrev=0 2>$null
-            if ($LASTEXITCODE -eq 0 -and $tag) {
-              $VERSION = $tag.Trim()
-            }
-            else {
-              $VERSION = 'dev-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss')
-            }
+
+          $VERSION = (Get-Content -Path version.txt -Raw).Trim()
+          if (-not $VERSION) {
+            Write-Error "version.txt is empty. Please put the release version in version.txt."
+            exit 1
           }
 
           $NAME = ($env:GITHUB_REPOSITORY -split '/')[ -1 ]
